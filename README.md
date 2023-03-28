@@ -7,11 +7,13 @@ This is a wrapper/port of <b>Thimbleweed Park</b> for the *PS Vita*.
 The port works by loading the official Android ARMv7 executable in memory, resolving its imports with native functions and patching it in order to properly run.
 By doing so, it's basically as if we emulate a minimalist Android environment in which we run natively the executable as it is.
 
-## Disclaimer
-
-The game has some memory leak that will eventually make it crash. The game however has a pretty efficient autosave feature. When game starts to be messy (Audio stopping working/Textures becoming corrupted), it's HUGELY suggested to save the game and restart the application.
-
 ## Changelog
+
+### v1.1
+
+- Updated to latest vitaGL version.
+- Increased available mem for the application.
+- Made so that game purges its cache when memory is shortening. (Fixes crashes/graphical corruption caused by out of mem)
 
 ### v1.0
 

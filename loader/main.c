@@ -3004,6 +3004,16 @@ void patch_game(void) {
 	hook_addr(so_symbol(&thimbleweed_mod, "SDL_wcslen_REAL"), (uintptr_t)&SDL_wcslen);
 }
 
+void *mem_manager(void *arg) {
+	void (*PurgeCache)(void *this) = (void *)so_symbol(&thimbleweed_mod, "_ZN9GameScene12appLowMemoryEv");
+	for (;;) {
+		if (vglMemFree(VGL_MEM_SLOW) < 22 * 1024 * 1024) {
+			PurgeCache(NULL);
+		}
+		sceKernelDelayThread(3 * 1000 * 1000);
+	}
+}
+
 void *pthread_main(void *arg) {
 	// Disabling rearpad
 	SDL_setenv("VITA_DISABLE_TOUCH_BACK", "1", 1);
@@ -3057,6 +3067,7 @@ int main(int argc, char *argv[]) {
 	so_relocate(&thimbleweed_mod);
 	so_resolve(&thimbleweed_mod, default_dynlib, sizeof(default_dynlib), 0);
 
+	vglUseTripleBuffering(GL_FALSE);
 	vglSetParamBufferSize(3 * 1024 * 1024);
 	vglInitWithCustomThreshold(0, SCREEN_W, SCREEN_H, MEMORY_VITAGL_THRESHOLD_MB * 1024 * 1024, 0, 0, 0, SCE_GXM_MULTISAMPLE_NONE);
 	
@@ -3109,13 +3120,17 @@ int main(int argc, char *argv[]) {
 	*(uintptr_t *)(fake_env + 0x36C) = (uintptr_t)GetJavaVM;
 	*(uintptr_t *)(fake_env + 0x374) = (uintptr_t)GetStringUTFRegion;
 
-	pthread_t t;
-	pthread_attr_t attr;
+	pthread_t t, t2;
+	pthread_attr_t attr, attr2;
 	pthread_attr_init(&attr);
-	pthread_attr_setstacksize(&attr, 1024 * 1024);
-	pthread_create(&t, &attr, pthread_main, NULL);
+	pthread_attr_setstacksize(&attr, 512 * 1024);
+	pthread_create(&t, &attr, mem_manager, NULL);
 
-	pthread_join(t, NULL);
+	pthread_attr_init(&attr2);
+	pthread_attr_setstacksize(&attr2, 512 * 1024);
+	pthread_create(&t2, &attr2, pthread_main, NULL);
+
+	pthread_join(t2, NULL);
 	
 	return 0;
 }
