@@ -38,19 +38,22 @@ target_link_libraries(thimbleweed
   webp
   jpeg
   mikmod
-  z
-  m
-  stdc++
   opensles
   sndfile
+  opusfile
+  opus
+  vorbisfile
+  ModPlug
   vorbis
   vorbisenc
-  vorbisfile
   ogg
   FLAC
   openal
   imgui
   vitaGL
+  z
+  m
+  stdc++
   vitashark
   SceShaccCgExt
   mathneon
