@@ -3069,6 +3069,7 @@ int main(int argc, char *argv[]) {
 
 	vglUseTripleBuffering(GL_FALSE);
 	vglSetParamBufferSize(3 * 1024 * 1024);
+	vglSetSemanticBindingMode(VGL_MODE_POSTPONED);
 	vglInitWithCustomThreshold(0, SCREEN_W, SCREEN_H, MEMORY_VITAGL_THRESHOLD_MB * 1024 * 1024, 0, 0, 0, SCE_GXM_MULTISAMPLE_NONE);
 	
 	patch_game();
