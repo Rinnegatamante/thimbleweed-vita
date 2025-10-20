@@ -543,7 +543,7 @@ int stat_hook(const char *pathname, void *statbuf) {
 }
 
 void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
-	return memalign(length, 0x1000);
+	return memalign(0x1000, length);
 }
 
 int munmap(void *addr, size_t length) {
