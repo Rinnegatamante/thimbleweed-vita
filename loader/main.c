@@ -48,7 +48,7 @@
 //#define ENABLE_DEBUG
 
 #ifdef ENABLE_DEBUG
-#define dlog printf
+#define dlog sceClibPrintf
 #else
 #define dlog
 #endif
@@ -76,8 +76,6 @@ int file_exists(const char *path) {
 }
 
 int _newlib_heap_size_user = MEMORY_NEWLIB_MB * 1024 * 1024;
-
-unsigned int _pthread_stack_default_user = 1 * 1024 * 1024;
 
 so_module thimbleweed_mod;
 
@@ -114,11 +112,7 @@ int debugPrintf(char *text, ...) {
 	vsprintf(string, text, list);
 	va_end(list);
 
-	SceUID fd = sceIoOpen("ux0:data/hazard_log.txt", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_APPEND, 0777);
-	if (fd >= 0) {
-		sceIoWrite(fd, string, strlen(string));
-		sceIoClose(fd);
-	}
+	dlog("[DBG] %s\n", string);
 #endif
 	return 0;
 }
@@ -132,7 +126,7 @@ int __android_log_print(int prio, const char *tag, const char *fmt, ...) {
 	vsprintf(string, fmt, list);
 	va_end(list);
 
-	printf("[LOG] %s: %s\n", tag, string);
+	dlog("[LOG] %s: %s\n", tag, string);
 #endif
 	return 0;
 }
@@ -146,7 +140,7 @@ int __android_log_write(int prio, const char *tag, const char *fmt, ...) {
 	vsprintf(string, fmt, list);
 	va_end(list);
 
-	printf("[LOGW] %s: %s\n", tag, string);
+	dlog("[LOGW] %s: %s\n", tag, string);
 #endif
 	return 0;
 }
@@ -158,7 +152,7 @@ int __android_log_vprint(int prio, const char *tag, const char *fmt, va_list lis
 	vsprintf(string, fmt, list);
 	va_end(list);
 
-	printf("[LOGV] %s: %s\n", tag, string);
+	dlog("[LOGV] %s: %s\n", tag, string);
 #endif
 	return 0;
 }
@@ -482,13 +476,15 @@ int GetEnv(void *vm, void **env, int r2) {
 }
 
 void throw_exc(char **str, void *a, int b) {
-	printf("throwing %s\n", *str);
+	dlog("throwing %s\n", *str);
 }
+
+FILE *main_obb = NULL;
 
 FILE *fopen_hook(char *fname, char *mode) {
 	FILE *f;
 	char real_fname[256];
-	//printf("fopen(%s,%s)\n", fname, mode);
+	dlog("fopen(%s,%s)\n", fname, mode);
 	if (strncmp(fname, "ux0:", 4)) {
 		sprintf(real_fname, "%s/%s", data_path, fname);
 		f = fopen(real_fname, mode);
@@ -501,7 +497,7 @@ FILE *fopen_hook(char *fname, char *mode) {
 int open_hook(const char *fname, int flags, mode_t mode) {
 	int f;
 	char real_fname[256];
-	//printf("open(%s)\n", fname);
+	dlog("open(%s)\n", fname);
 	if (strncmp(fname, "ux0:", 4)) {
 		sprintf(real_fname, "%s/%s", data_path, fname);
 		f = open(real_fname, flags, mode);
@@ -534,11 +530,13 @@ static int __stack_chk_guard_fake = 0x42424242;
 static FILE __sF_fake[0x1000][3];
 
 int stat_hook(const char *pathname, void *statbuf) {
-	//dlog("stat(%s)\n", pathname);
+	if (pathname[0] != 'u')
+		return -1;
 	struct stat st;
 	int res = stat(pathname, &st);
 	if (res == 0)
 		*(uint64_t *)(statbuf + 0x30) = st.st_size;
+	dlog("stat(%s) => %d\n", pathname, res);
 	return res;
 }
 
@@ -564,7 +562,7 @@ extern void *__cxa_guard_release;
 
 void *sceClibMemclr(void *dst, SceSize len) {
 	if (!dst) {
-		printf("memclr on NULL\n");
+		dlog("memclr on NULL\n");
 		return NULL;
 	}
 	return sceClibMemset(dst, 0, len);
@@ -588,7 +586,7 @@ char *SDL_AndroidGetInternalStoragePath() {
 
 char *SDL_GetPrefPath_hook(const char *org, const char *app) {
 	char *r = SDL_GetPrefPath(org, app);
-	printf("Pref Path: %s\n", r);
+	dlog("Pref Path: %s\n", r);
 	r[strlen(r) - 1] = 0;
 	return r;
 }
@@ -672,7 +670,7 @@ int closedir_fake(android_DIR *dirp) {
 }
 
 android_DIR *opendir_fake(const char *dirname) {
-	printf("opendir(%s)\n", dirname);
+	dlog("opendir(%s)\n", dirname);
 	SceUID uid = sceIoDopen(dirname);
 
 	if (uid < 0) {
@@ -720,32 +718,22 @@ struct android_dirent *readdir_fake(android_DIR *dirp) {
 
 SDL_Surface *IMG_Load_hook(const char *file) {
 	char real_fname[256];
-	printf("loading %s\n", file);
-	if (strncmp(file, "ux0:", 4)) {
-		sprintf(real_fname, "%s/assets/%s", data_path, file);
-		return IMG_Load(real_fname);
-	}
+	dlog("loading %s\n", file);
 	return IMG_Load(file);
 }
 
 SDL_RWops *SDL_RWFromFile_hook(const char *fname, const char *mode) {
 	SDL_RWops *f;
 	char real_fname[256];
-	printf("SDL_RWFromFile(%s,%s)\n", fname, mode);
-	/*if (strncmp(fname, "ux0:", 4)) {
-		sprintf(real_fname, "%s/assets/%s", data_path, fname);
-		printf("SDL_RWFromFile patched to %s\n", real_fname);
-		f = SDL_RWFromFile(real_fname, mode);
-	} else*/ {
-		f = SDL_RWFromFile(fname, mode);
-	}
+	dlog("SDL_RWFromFile(%s,%s)\n", fname, mode);
+	f = SDL_RWFromFile(fname, mode);
 	return f;
 }
 
 Mix_Music *Mix_LoadMUS_hook(const char *fname) {
 	Mix_Music *f;
 	char real_fname[256];
-	printf("Mix_LoadMUS(%s)\n", fname);
+	dlog("Mix_LoadMUS(%s)\n", fname);
 	if (strncmp(fname, "ux0:", 4)) {
 		sprintf(real_fname, "%s/assets/%s", data_path, fname);
 		f = Mix_LoadMUS(real_fname);
@@ -766,7 +754,7 @@ size_t __strlen_chk(const char *s, size_t s_len) {
 }
 
 SDL_Window *SDL_CreateWindow_hook(const char *title, int x, int y, int w, int h, Uint32 flags) {
-	return SDL_CreateWindow("hazard", 0, 0, SCREEN_W, SCREEN_H, flags);
+	return SDL_CreateWindow("Thimbleweed Park", 0, 0, SCREEN_W, SCREEN_H, flags);
 }
 
 uint64_t lseek64(int fd, uint64_t offset, int whence) {
@@ -776,7 +764,7 @@ uint64_t lseek64(int fd, uint64_t offset, int whence) {
 char *SDL_GetBasePath_hook() {
 	void *ret = malloc(256);
 	sprintf(ret, "%s/assets/", data_path);
-	printf("SDL_GetBasePath\n");
+	dlog("SDL_GetBasePath\n");
 	return ret;
 }
 
@@ -803,10 +791,16 @@ int SDL_OpenAudio_fake(SDL_AudioSpec * desired, SDL_AudioSpec * obtained) {
 	return SDL_OpenAudio(desired, obtained);
 }
 
+void glReadPixels_hook(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void * data) {
+	vglSwapBuffers(GL_FALSE);
+	glFinish();
+	glReadPixels(x, y, width, height, format, type, data);
+}
+
 static so_default_dynlib default_dynlib[] = {
 	{ "glTexParameteri", (uintptr_t)&glTexParameteri},
 	{ "glGetError", (uintptr_t)&ret0},
-	{ "glReadPixels", (uintptr_t)&glReadPixels},
+	{ "glReadPixels", (uintptr_t)&glReadPixels_hook},
 	{ "glShaderSource", (uintptr_t)&glShaderSource},
 	{ "glGetUniformLocation", (uintptr_t)&glGetUniformLocation_fake},
 	{ "glBindAttribLocation", (uintptr_t)&glBindAttribLocation_fake},
@@ -998,7 +992,7 @@ static so_default_dynlib default_dynlib[] = {
 	// { "poll", (uintptr_t)&poll },
 	{ "pow", (uintptr_t)&pow },
 	{ "powf", (uintptr_t)&powf },
-	{ "printf", (uintptr_t)&printf },
+	{ "printf", (uintptr_t)&ret0 },
 	{ "pthread_attr_destroy", (uintptr_t)&pthread_attr_destroy_soloader },
 	{ "pthread_attr_getstack", (uintptr_t)&pthread_attr_getstack_soloader },
 	{ "pthread_attr_init", (uintptr_t) &pthread_attr_init_soloader },
@@ -1625,7 +1619,7 @@ int GetArrayLength(void *env, void *array) {
 	}
 }*/
 
-void GGLog(const char *fmt, ...) {
+/*void GGLog(const char *fmt, ...) {
 	va_list list;
 	static char string[0x8000];
 
@@ -1633,7 +1627,18 @@ void GGLog(const char *fmt, ...) {
 	vsprintf(string, fmt, list);
 	va_end(list);
 
-	printf("[GGLOG] %s\n", string);
+	dlog("[GGLOG] %s\n", string);
+}*/
+
+void GGErrorFunc(const char *fmt, ...) {
+	va_list list;
+	static char string[0x8000];
+
+	va_start(list, fmt);
+	vsprintf(string, fmt, list);
+	va_end(list);
+
+	dlog("[GGERROR] %s\n", string);
 }
 
 int InitObbPath() {
@@ -1650,15 +1655,80 @@ int UserPrefsGetBool(void *this, char *name, int def_val) {
 	return SO_CONTINUE(int, bool_hook, this, name, def_val);
 }
 
+void *(*GGLoadDataFromFile)(void *this, int unk1, uint64_t unk2, uint64_t unk3, int unk4);
+
+
+so_hook dataFromFilename_hook;
+int dataFromFilename(uint32_t *this, uint32_t *a1, float *a2) {
+	uint32_t *ret = SO_CONTINUE(uint32_t *, dataFromFilename_hook, this, a1, a2);
+	if (this && !strncmp(this[4], "ux0:/data/Terrible Toybox/Thimbleweed Park/Savegame", strlen("ux0:/data/Terrible Toybox/Thimbleweed Park/Savegame"))) {
+		return GGLoadDataFromFile(this, 0, 0xFFFFFFFFFFFFFFFFLL, 0xFFFFFFFFFFFFFFFFLL, 0);
+	}
+	return ret;
+}
 
 void patch_game(void) {
-	bool_hook = hook_addr(so_symbol(&thimbleweed_mod, "_ZN11GGUserPrefs7getBoolEPKcb"), (uintptr_t)&UserPrefsGetBool);
+	//bool_hook = hook_addr(so_symbol(&thimbleweed_mod, "_ZN11GGUserPrefs7getBoolEPKcb"), (uintptr_t)&UserPrefsGetBool);
+	
+	dataFromFilename_hook = hook_addr(so_symbol(&thimbleweed_mod, "_ZN17GGPackfileManager16dataFromFilenameEP8GGStringb"), (uintptr_t)&dataFromFilename);
+	GGLoadDataFromFile = (void *)so_symbol(&thimbleweed_mod, "_Z18GGLoadDataFromFileP8GGStringPKhyyj");
 	
 	//hook_addr(so_symbol(&thimbleweed_mod, "_Z5GGLogPKcz"), (uintptr_t)&GGLog);
+	hook_addr(so_symbol(&thimbleweed_mod, "_Z11GGErrorFuncPKcz"), (uintptr_t)&ret0);
 	
 	hook_addr(so_symbol(&thimbleweed_mod, "_ZN6GGCurl13httpPostASyncEP8GGStringP12GGDictionary"), (uintptr_t)&ret0);
 	hook_addr(so_symbol(&thimbleweed_mod, "_ZN9Analytics6uploadEv"), (uintptr_t)&ret0);
 	hook_addr(so_symbol(&thimbleweed_mod, "_Z11InitObbPathv"), (uintptr_t)&InitObbPath);
+	
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_Linked_Version"), (uintptr_t)&IMG_Linked_Version);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_Init"), (uintptr_t)&IMG_Init);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_Quit"), (uintptr_t)&IMG_Quit);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadTyped_RW"), (uintptr_t)&IMG_LoadTyped_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_Load"), (uintptr_t)&IMG_Load_hook);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_Load_RW"), (uintptr_t)&IMG_Load_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadTexture"), (uintptr_t)&IMG_LoadTexture);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadTexture_RW"), (uintptr_t)&IMG_LoadTexture_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadTextureTyped_RW"), (uintptr_t)&IMG_LoadTextureTyped_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_isXPM"), (uintptr_t)&IMG_isXPM);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadXPM_RW"), (uintptr_t)&IMG_LoadXPM_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_ReadXPMFromArray"), (uintptr_t)&IMG_ReadXPMFromArray);
+	//hook_addr(so_symbol(&thimbleweed_mod, "IMG_InitPNG"), (uintptr_t)&IMG_InitPNG);
+	//hook_addr(so_symbol(&thimbleweed_mod, "IMG_QuitPNG"), (uintptr_t)&IMG_QuitPNG);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_isPNG"), (uintptr_t)&IMG_isPNG);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadPNG_RW"), (uintptr_t)&IMG_LoadPNG_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_SavePNG_RW"), (uintptr_t)&IMG_SavePNG_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_SavePNG"), (uintptr_t)&IMG_SavePNG);
+	//hook_addr(so_symbol(&thimbleweed_mod, "IMG_InitJPG"), (uintptr_t)&IMG_InitJPG);
+	//hook_addr(so_symbol(&thimbleweed_mod, "IMG_QuitJPG"), (uintptr_t)&IMG_QuitJPG);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_isJPG"), (uintptr_t)&IMG_isJPG);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadJPG_RW"), (uintptr_t)&IMG_LoadJPG_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_isBMP"), (uintptr_t)&IMG_isBMP);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_isICO"), (uintptr_t)&IMG_isICO);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_isCUR"), (uintptr_t)&IMG_isCUR);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadBMP_RW"), (uintptr_t)&IMG_LoadBMP_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadICO_RW"), (uintptr_t)&IMG_LoadICO_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadCUR_RW"), (uintptr_t)&IMG_LoadCUR_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_isPCX"), (uintptr_t)&IMG_isPCX);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadPCX_RW"), (uintptr_t)&IMG_LoadPCX_RW);
+	//hook_addr(so_symbol(&thimbleweed_mod, "IMG_InitWEBP"), (uintptr_t)&IMG_InitWEBP);
+	//hook_addr(so_symbol(&thimbleweed_mod, "IMG_QuitWEBP"), (uintptr_t)&IMG_QuitWEBP);
+	//hook_addr(so_symbol(&thimbleweed_mod, "IMG_isWEB"), (uintptr_t)&IMG_isWEB);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadWEBP_RW"), (uintptr_t)&IMG_LoadWEBP_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_isXCF"), (uintptr_t)&IMG_isXCF);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadXCF_RW"), (uintptr_t)&IMG_LoadXCF_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_isGIF"), (uintptr_t)&IMG_isGIF);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadGIF_RW"), (uintptr_t)&IMG_LoadGIF_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadTGA_RW"), (uintptr_t)&IMG_LoadTGA_RW);
+	//hook_addr(so_symbol(&thimbleweed_mod, "IMG_InitTIF"), (uintptr_t)&IMG_InitTIF);
+	//hook_addr(so_symbol(&thimbleweed_mod, "IMG_QuitTIF"), (uintptr_t)&IMG_QuitTIF);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_isTIF"), (uintptr_t)&IMG_isTIF);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadTIF_RW"), (uintptr_t)&IMG_LoadTIF_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_isPNM"), (uintptr_t)&IMG_isPNM);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadPNM_RW"), (uintptr_t)&IMG_LoadPNM_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_isLBM"), (uintptr_t)&IMG_isLBM);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadLBM_RW"), (uintptr_t)&IMG_LoadLBM_RW);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_isXV"), (uintptr_t)&IMG_isXV);
+	hook_addr(so_symbol(&thimbleweed_mod, "IMG_LoadXV_RW"), (uintptr_t)&IMG_LoadXV_RW);
 	
 	//hook_addr(so_symbol(&thimbleweed_mod, "SDL_AddBasicVideoDisplay"), (uintptr_t)&SDL_AddBasicVideoDisplay);
 	//hook_addr(so_symbol(&thimbleweed_mod, "SDL_AddDisplayMode"), (uintptr_t)&SDL_AddDisplayMode);
