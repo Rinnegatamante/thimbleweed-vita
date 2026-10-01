@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <wchar.h>
 #include <wctype.h>
@@ -523,7 +524,6 @@ extern void *__cxa_finalize;
 extern void *__cxa_call_unexpected;
 extern void *__gnu_unwind_frame;
 extern void *__stack_chk_fail;
-int open(const char *pathname, int flags);
 
 static int __stack_chk_guard_fake = 0x42424242;
 
@@ -1547,7 +1547,7 @@ void *CallObjectMethodV(void *env, void *obj, int methodID, uintptr_t *args) {
 			return "en";
 		}
 	default:
-		return 0x34343434;
+		return (void *)(uintptr_t)0x34343434;
 	}
 }
 
@@ -1659,9 +1659,9 @@ void *(*GGLoadDataFromFile)(void *this, int unk1, uint64_t unk2, uint64_t unk3, 
 
 
 so_hook dataFromFilename_hook;
-int dataFromFilename(uint32_t *this, uint32_t *a1, float *a2) {
+uint32_t *dataFromFilename(uint32_t *this, uint32_t *a1, float *a2) {
 	uint32_t *ret = SO_CONTINUE(uint32_t *, dataFromFilename_hook, this, a1, a2);
-	if (this && !strncmp(this[4], "ux0:/data/Terrible Toybox/Thimbleweed Park/Savegame", strlen("ux0:/data/Terrible Toybox/Thimbleweed Park/Savegame"))) {
+	if (this && !strncmp((const char *)(uintptr_t)this[4], "ux0:/data/Terrible Toybox/Thimbleweed Park/Savegame", strlen("ux0:/data/Terrible Toybox/Thimbleweed Park/Savegame"))) {
 		return GGLoadDataFromFile(this, 0, 0xFFFFFFFFFFFFFFFFLL, 0xFFFFFFFFFFFFFFFFLL, 0);
 	}
 	return ret;
@@ -3077,7 +3077,7 @@ void patch_game(void) {
 void *mem_manager(void *arg) {
 	void (*PurgeCache)(void *this) = (void *)so_symbol(&thimbleweed_mod, "_ZN9GameScene12appLowMemoryEv");
 	for (;;) {
-		if (vglMemFree(VGL_MEM_SLOW) < 22 * 1024 * 1024) {
+		if (vglMemFree(VGL_MEM_PHYCONT) < 22 * 1024 * 1024) {
 			PurgeCache(NULL);
 		}
 		sceKernelDelayThread(3 * 1000 * 1000);

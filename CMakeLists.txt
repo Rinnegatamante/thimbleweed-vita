@@ -10,6 +10,15 @@ endif()
 
 project(thimbleweed C CXX)
 include("${VITASDK}/share/vita.cmake" REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SDL2_mixer REQUIRED IMPORTED_TARGET SDL2_mixer)
+pkg_check_modules(SDL2_image REQUIRED IMPORTED_TARGET SDL2_image)
+pkg_check_modules(SDL2_ttf REQUIRED IMPORTED_TARGET SDL2_ttf)
+pkg_check_modules(SDL2_net REQUIRED IMPORTED_TARGET SDL2_net)
+pkg_check_modules(sndfile REQUIRED IMPORTED_TARGET sndfile)
+pkg_check_modules(vorbisfile REQUIRED IMPORTED_TARGET vorbisfile)
+pkg_check_modules(openal REQUIRED IMPORTED_TARGET openal)
+pkg_check_modules(freetype2 REQUIRED IMPORTED_TARGET freetype2)
 set(VITA_APP_NAME "Thimbleweed Park")
 set(VITA_TITLEID  "THIMBPARK")
 set(VITA_MKSFOEX_FLAGS "-d ATTRIBUTE2=12")
@@ -25,25 +34,35 @@ add_executable(thimbleweed
   loader/ctype_patch.c
 )
 
+set_target_properties(thimbleweed PROPERTIES LINKER_LANGUAGE CXX)
+
 target_link_libraries(thimbleweed
   -Wl,--whole-archive pthread -Wl,--no-whole-archive
+  PkgConfig::SDL2_mixer
+  PkgConfig::SDL2_image
+  PkgConfig::SDL2_ttf
+  PkgConfig::SDL2_net
+  PkgConfig::sndfile
+  PkgConfig::vorbisfile
+  PkgConfig::openal
+  PkgConfig::freetype2
   SDL2_mixer
   SDL2_image
   SDL2_ttf
   SDL2_net
   freetype
-  soloud_static
+  soloud
   SDL2
   png
   webp
   jpeg
   mikmod
-  opensles
+  OpenSLES
   sndfile
   opusfile
   opus
   vorbisfile
-  ModPlug
+  modplug
   vorbis
   vorbisenc
   ogg
@@ -72,7 +91,6 @@ target_link_libraries(thimbleweed
   SceFios2_stub
   SceGxm_stub
   SceIme_stub
-  SceLibcBridge_stub
   SceShaccCg_stub
   SceSysmodule_stub
   ScePower_stub
@@ -80,7 +98,7 @@ target_link_libraries(thimbleweed
   SceMotion_stub
   SceHid_stub
   SceVshBridge_stub
-  SceKernelDmacmgr_stub
+  SceKernelDmacMgr_stub
 )
 
 vita_create_self(eboot.bin thimbleweed UNSAFE)
@@ -93,3 +111,7 @@ vita_create_vpk(thimbleweed.vpk ${VITA_TITLEID} eboot.bin
        ${CMAKE_SOURCE_DIR}/livearea/startup.png sce_sys/livearea/contents/startup.png
        ${CMAKE_SOURCE_DIR}/livearea/template.xml sce_sys/livearea/contents/template.xml
 )
+
+set_property(SOURCE loader/so_util.c APPEND PROPERTY COMPILE_OPTIONS -Wno-error=return-mismatch -Wno-error=incompatible-pointer-types)
+
+set_property(SOURCE loader/main.c APPEND PROPERTY COMPILE_OPTIONS -std=gnu17)
